@@ -36,7 +36,7 @@ endif
 
 DESTDIR   ?=
 CPPFLAGS  += -I$(FSEDIR)
-CFLAGS    ?= -O3 $(ALIGN_LOOP)
+CFLAGS    ?= -O3 $(ALIGN_LOOP) -mbmi2
 CFLAGS    += -Wall -Wextra -Wcast-qual -Wcast-align -Wshadow \
              -Wstrict-aliasing=1 -Wswitch-enum -Wstrict-prototypes -Wundef
 FLAGS      = $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(MOREFLAGS)
@@ -64,7 +64,7 @@ fse32: CFLAGS += -m32
 fsex32: CFLAGS += -mx32
 fse fse32 fsex32: bench.c commandline.c fileio.c xxhash.c zlibh.c \
                   $(FSEDIR)/entropy_common.c $(FSEDIR)/hist.c \
-                  $(FSEDIR)/fse_decompress.c $(FSEDIR)/fse_compress.c $(FSEDIR)/fseU16.c \
+                  $(FSEDIR)/fse_decompress.c $(FSEDIR)/fse_compress.c \
                   $(FSEDIR)/huf_compress.c $(FSEDIR)/huf_decompress.c
 	$(CC) $(FLAGS) $^ -o $@$(EXT)
 
