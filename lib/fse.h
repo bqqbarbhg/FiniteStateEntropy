@@ -473,7 +473,7 @@ Check also the states. There might be some symbols left there, if some high prob
 /* *****************************************
 *  FSE unsafe API
 *******************************************/
-static unsigned char FSE_decodeSymbolFast(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD);
+static unsigned char FSE_decodeSymbolFast(FSE_DState_t* DStatePtr, BIT_DStreamFast_t* bitD);
 /* faster, but works only if nbBits is always >= 1 (otherwise, result will be corrupted) */
 
 
@@ -599,12 +599,23 @@ MEM_STATIC BYTE FSE_peekSymbol(const FSE_DState_t* DStatePtr)
     return FSE_decode_t_symbol(DInfo);
 }
 
-MEM_STATIC BYTE FSE_decodeSymbol(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
+MEM_STATIC BYTE FSE_decodeSymbolFast(FSE_DState_t* DStatePtr, BIT_DStreamFast_t* bitD)
 {
     FSE_decode_t const DInfo = *(const FSE_decode_t*)(DStatePtr->table_state);
     U32 const nbBits = FSE_decode_t_nbBits(DInfo);
     BYTE const symbol = FSE_decode_t_symbol(DInfo);
     size_t const lowBits = BIT_readBitsNoMask(bitD, nbBits);
+
+    DStatePtr->table_state = (char*)(((uintptr_t)DStatePtr->table_state + FSE_decode_t_delta_bytes(DInfo)) + lowBits*4);
+    return symbol;
+}
+
+MEM_STATIC BYTE FSE_decodeSymbol(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
+{
+    FSE_decode_t const DInfo = *(const FSE_decode_t*)(DStatePtr->table_state);
+    U32 const nbBits = FSE_decode_t_nbBits(DInfo);
+    BYTE const symbol = FSE_decode_t_symbol(DInfo);
+    size_t const lowBits = BIT_readBits(bitD, nbBits);
 
     DStatePtr->table_state = (char*)(((uintptr_t)DStatePtr->table_state + FSE_decode_t_delta_bytes(DInfo)) + lowBits*4);
     return symbol;

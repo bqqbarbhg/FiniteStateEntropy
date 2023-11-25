@@ -172,6 +172,70 @@ size_t FSE_buildDTable_raw (FSE_DTable* dt, unsigned nbBits)
     return 0;
 }
 
+typedef struct {
+    BYTE *op;
+    BYTE *olimit;
+    FSE_DState_t state1;
+    FSE_DState_t state2;
+    FSE_DState_t state3;
+    FSE_DState_t state4;
+    BIT_DStream_t bitD1;
+    BIT_DStream_t bitD2;
+} FSE_decompress_usingDTable_args;
+
+FORCE_NOINLINE
+void FSE_decompress_usingDTable_internal(
+    FSE_decompress_usingDTable_args *args)
+{
+	BIT_DStreamFast_t bitD1, bitD2;
+
+    BYTE *op = args->op;
+    FSE_DState_t state1 = args->state1;
+    FSE_DState_t state2 = args->state2;
+    FSE_DState_t state3 = args->state3;
+    FSE_DState_t state4 = args->state4;
+    bitD1.bitContainer = args->bitD1.bitContainer;
+    bitD1.bitsConsumed = args->bitD1.bitsConsumed;
+    bitD1.limitPtr = args->bitD1.limitPtr;
+    bitD1.ptr = args->bitD1.ptr;
+    bitD2.bitContainer = args->bitD2.bitContainer;
+    bitD2.bitsConsumed = args->bitD2.bitsConsumed;
+    bitD2.limitPtr = args->bitD2.limitPtr;
+    bitD2.ptr = args->bitD2.ptr;
+
+    /* 8 symbols per loop */
+    for ( ; ; op += 8) {
+        int breakFlag = 0;
+        breakFlag |= (BIT_reloadDStreamFastFast(&bitD1)!=BIT_DStream_unfinished);
+        breakFlag |= (BIT_reloadDStreamFastFast(&bitD2)!=BIT_DStream_unfinished);
+        if (breakFlag) break;
+
+        op[0] = FSE_decodeSymbolFast(&state1, &bitD1);
+        op[1] = FSE_decodeSymbolFast(&state2, &bitD2);
+        op[2] = FSE_decodeSymbolFast(&state3, &bitD1);
+        op[3] = FSE_decodeSymbolFast(&state4, &bitD2);
+
+        op[4] = FSE_decodeSymbolFast(&state1, &bitD1);
+        op[5] = FSE_decodeSymbolFast(&state2, &bitD2);
+        op[6] = FSE_decodeSymbolFast(&state3, &bitD1);
+        op[7] = FSE_decodeSymbolFast(&state4, &bitD2);
+    }
+
+    args->op = op;
+    args->state1 = state1;
+    args->state2 = state2;
+    args->state3 = state3;
+    args->state4 = state4;
+    args->bitD1.bitContainer = bitD1.bitContainer;
+    args->bitD1.bitsConsumed = bitD1.bitsConsumed;
+    args->bitD1.limitPtr = bitD1.limitPtr;
+    args->bitD1.ptr = bitD1.ptr;
+    args->bitD2.bitContainer = bitD2.bitContainer;
+    args->bitD2.bitsConsumed = bitD2.bitsConsumed;
+    args->bitD2.limitPtr = bitD2.limitPtr;
+    args->bitD2.ptr = bitD2.ptr;
+}
+
 FORCE_NOINLINE
 size_t FSE_decompress_usingDTable_generic(
           void* dst, size_t maxDstSize,
@@ -181,44 +245,44 @@ size_t FSE_decompress_usingDTable_generic(
     BYTE* const ostart = (BYTE*) dst;
     BYTE* op = ostart;
     BYTE* const omax = op + maxDstSize;
-    BYTE* const olimit = omax-3;
+    BYTE* const olimit = omax-7;
 
-    BIT_DStream_t bitD;
-    FSE_DState_t state1;
-    FSE_DState_t state2;
-    FSE_DState_t state3;
-    FSE_DState_t state4;
+    const BYTE* const istart = (const BYTE*) cSrc;
+
+	size_t const length1 = MEM_readLE16(istart);
+	size_t const length2 = cSrcSize - (length1 + 2);
+	const BYTE* const istart1 = istart + 2;
+	const BYTE* const istart2 = istart1 + length1;
+
+	FSE_decompress_usingDTable_args a;
 
     /* Init */
-    CHECK_F(BIT_initDStream(&bitD, cSrc, cSrcSize));
+    CHECK_F(BIT_initDStream(&a.bitD1, istart1, length1));
+    CHECK_F(BIT_initDStream(&a.bitD2, istart2, length2));
 
-    FSE_initDState(&state1, &bitD, dt);
-    FSE_initDState(&state2, &bitD, dt);
-    FSE_initDState(&state3, &bitD, dt);
-    FSE_initDState(&state4, &bitD, dt);
+    FSE_initDState(&a.state1, &a.bitD1, dt);
+    FSE_initDState(&a.state2, &a.bitD2, dt);
+    FSE_initDState(&a.state3, &a.bitD1, dt);
+    FSE_initDState(&a.state4, &a.bitD2, dt);
 
-#undef FSE_GETSYMBOL
-#define FSE_GETSYMBOL(statePtr) FSE_decodeSymbol(statePtr, &bitD)
+    a.op = op;
+    a.olimit = olimit;
 
-#if 1
-    /* 4 symbols per loop */
-    for ( ; (BIT_reloadDStream(&bitD)==BIT_DStream_unfinished) & (op<olimit) ; op+=4) {
-        op[0] = FSE_GETSYMBOL(&state1);
-        op[1] = FSE_GETSYMBOL(&state2);
-        op[2] = FSE_GETSYMBOL(&state3);
-        op[3] = FSE_GETSYMBOL(&state4);
-    }
-#endif
+    FSE_decompress_usingDTable_internal(&a);
+
+    op = a.op;
+    BIT_reloadDStream(&a.bitD1);
+    BIT_reloadDStream(&a.bitD2);
 
     while (op < omax) {
-        *op++ = FSE_GETSYMBOL(&state1);
-        BIT_reloadDStream(&bitD);
-        *op++ = FSE_GETSYMBOL(&state2);
-        BIT_reloadDStream(&bitD);
-        *op++ = FSE_GETSYMBOL(&state3);
-        BIT_reloadDStream(&bitD);
-        *op++ = FSE_GETSYMBOL(&state4);
-        BIT_reloadDStream(&bitD);
+        *op++ = FSE_decodeSymbol(&a.state1, &a.bitD1);
+        BIT_reloadDStream(&a.bitD1);
+        *op++ = FSE_decodeSymbol(&a.state2, &a.bitD2);
+        BIT_reloadDStream(&a.bitD2);
+        *op++ = FSE_decodeSymbol(&a.state3, &a.bitD1);
+        BIT_reloadDStream(&a.bitD1);
+        *op++ = FSE_decodeSymbol(&a.state4, &a.bitD2);
+        BIT_reloadDStream(&a.bitD2);
     }
 
     return op-ostart;

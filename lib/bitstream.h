@@ -98,9 +98,16 @@ typedef struct {
     size_t   bitContainer;
     unsigned bitsConsumed;
     const char* ptr;
-    const char* start;
     const char* limitPtr;
+    const char* start;
 } BIT_DStream_t;
+
+typedef struct {
+    size_t   bitContainer;
+    unsigned bitsConsumed;
+    const char* ptr;
+    const char* limitPtr;
+} BIT_DStreamFast_t;
 
 typedef enum { BIT_DStream_unfinished = 0,
                BIT_DStream_endOfBuffer = 1,
@@ -372,7 +379,7 @@ MEM_STATIC size_t BIT_lookBitsFast(const BIT_DStream_t* bitD, U32 nbBits)
 }
 
 
-MEM_STATIC size_t BIT_lookBitsNoMask(const BIT_DStream_t* bitD, U32 nbBits)
+MEM_STATIC size_t BIT_lookBitsNoMask(const BIT_DStreamFast_t* bitD, U32 nbBits)
 {
     return _bzhi_u64(_shrx_u64(bitD->bitContainer, ((sizeof(bitD->bitContainer)*8) - bitD->bitsConsumed - nbBits)), nbBits);
 }
@@ -393,10 +400,10 @@ MEM_STATIC size_t BIT_readBits(BIT_DStream_t* bitD, unsigned nbBits)
     return value;
 }
 
-MEM_STATIC size_t BIT_readBitsNoMask(BIT_DStream_t* bitD, unsigned nbBits)
+MEM_STATIC size_t BIT_readBitsNoMask(BIT_DStreamFast_t* bitD, unsigned nbBits)
 {
     size_t const value = BIT_lookBitsNoMask(bitD, nbBits);
-    BIT_skipBits(bitD, nbBits);
+    bitD->bitsConsumed += nbBits;
     return value;
 }
 
@@ -417,6 +424,17 @@ MEM_STATIC size_t BIT_readBitsFast(BIT_DStream_t* bitD, unsigned nbBits)
  *     point you must use BIT_reloadDStream() to reload.
  */
 MEM_STATIC BIT_DStream_status BIT_reloadDStreamFast(BIT_DStream_t* bitD)
+{
+    if (UNLIKELY(bitD->ptr < bitD->limitPtr))
+        return BIT_DStream_overflow;
+    assert(bitD->bitsConsumed <= sizeof(bitD->bitContainer)*8);
+    bitD->ptr -= bitD->bitsConsumed >> 3;
+    bitD->bitsConsumed &= 7;
+    bitD->bitContainer = MEM_readLEST(bitD->ptr);
+    return BIT_DStream_unfinished;
+}
+
+MEM_STATIC BIT_DStream_status BIT_reloadDStreamFastFast(BIT_DStreamFast_t* bitD)
 {
     if (UNLIKELY(bitD->ptr < bitD->limitPtr))
         return BIT_DStream_overflow;

@@ -553,40 +553,37 @@ size_t FSE_buildCTable_rle (FSE_CTable* ct, BYTE symbolValue)
 
 static size_t FSE_compress_usingCTable_generic (void* dst, size_t dstSize,
                            const void* src, size_t srcSize,
-                           const FSE_CTable* ct, const unsigned fast)
+                           const FSE_CTable* ct)
 {
     const BYTE* const istart = (const BYTE*) src;
     const BYTE* const iend = istart + srcSize;
     const BYTE* ip=iend;
 
     BIT_CStream_t bitC;
-    FSE_CState_t CState1, CState2, CState3, CState4;
+    FSE_CState_t CState1, CState2;
 
     /* init */
-    if (srcSize % 4 != 0) return 0;
     { size_t const initError = BIT_initCStream(&bitC, dst, dstSize);
       if (FSE_isError(initError)) return 0; /* not enough space available to write a bitstream */ }
 
-#define FSE_FLUSHBITS(s)  (fast ? BIT_flushBitsFast(s) : BIT_flushBits(s))
+#define FSE_FLUSHBITS(s)  BIT_flushBitsFast(s)
 
-	FSE_initCState2(&CState4, ct, *--ip);
-	FSE_initCState2(&CState3, ct, *--ip);
-	FSE_initCState2(&CState2, ct, *--ip);
-	FSE_initCState2(&CState1, ct, *--ip);
+    ip -= 2;
+	FSE_initCState2(&CState2, ct, *ip);
+    ip -= 2;
+	FSE_initCState2(&CState1, ct, *ip);
 
     /* 2 or 4 encoding per loop */
     while ( ip>istart ) {
 
-        FSE_encodeSymbol(&bitC, &CState4, *--ip);
-        FSE_encodeSymbol(&bitC, &CState3, *--ip);
-		FSE_encodeSymbol(&bitC, &CState2, *--ip);
-		FSE_encodeSymbol(&bitC, &CState1, *--ip);
+		ip -= 2;
+		FSE_encodeSymbol(&bitC, &CState2, *ip);
+		ip -= 2;
+		FSE_encodeSymbol(&bitC, &CState1, *ip);
 
         FSE_FLUSHBITS(&bitC);
     }
 
-    FSE_flushCState(&bitC, &CState4);
-    FSE_flushCState(&bitC, &CState3);
     FSE_flushCState(&bitC, &CState2);
     FSE_flushCState(&bitC, &CState1);
     return BIT_closeCStream(&bitC);
@@ -596,12 +593,20 @@ size_t FSE_compress_usingCTable (void* dst, size_t dstSize,
                            const void* src, size_t srcSize,
                            const FSE_CTable* ct)
 {
-    unsigned const fast = (dstSize >= FSE_BLOCKBOUND(srcSize));
+    char *dp = (char*)dst, *dlimit = dp + dstSize;
+    char *dstart = dp;
 
-    if (fast)
-        return FSE_compress_usingCTable_generic(dst, dstSize, src, srcSize, ct, 1);
-    else
-        return FSE_compress_usingCTable_generic(dst, dstSize, src, srcSize, ct, 0);
+    if (srcSize % 8 != 0) return 0;
+
+    dp += 2;
+	size_t s0 = FSE_compress_usingCTable_generic(dp, dlimit - dp, (char*)src, srcSize, ct);
+    dp += s0;
+	size_t s1 = FSE_compress_usingCTable_generic(dp, dlimit - dp, (char*)src + 1, srcSize, ct);
+    dp += s1;
+
+    MEM_writeLE16(dstart, s0);
+
+    return dp - dstart;
 }
 
 

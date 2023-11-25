@@ -507,7 +507,7 @@ int BMK_benchFiles(const char** fileNamesTable, int nbFiles)
             DISPLAY("Not enough memory for '%s' full size; testing %i MB only...\n",
                     inFileName, (int)(benchedSize>>20));
 
-        benchedSize &= ~(size_t)0x3;
+        benchedSize &= ~(size_t)0x7;
 
         /* Allocation */
         chunkP = (chunkParameters_t*) malloc(((benchedSize / chunkSize)+1) * sizeof(chunkParameters_t));
