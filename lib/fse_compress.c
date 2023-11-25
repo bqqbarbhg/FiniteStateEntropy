@@ -560,51 +560,33 @@ static size_t FSE_compress_usingCTable_generic (void* dst, size_t dstSize,
     const BYTE* ip=iend;
 
     BIT_CStream_t bitC;
-    FSE_CState_t CState1, CState2;
+    FSE_CState_t CState1, CState2, CState3, CState4;
 
     /* init */
-    if (srcSize <= 2) return 0;
+    if (srcSize % 4 != 0) return 0;
     { size_t const initError = BIT_initCStream(&bitC, dst, dstSize);
       if (FSE_isError(initError)) return 0; /* not enough space available to write a bitstream */ }
 
 #define FSE_FLUSHBITS(s)  (fast ? BIT_flushBitsFast(s) : BIT_flushBits(s))
 
-    if (srcSize & 1) {
-        FSE_initCState2(&CState1, ct, *--ip);
-        FSE_initCState2(&CState2, ct, *--ip);
-        FSE_encodeSymbol(&bitC, &CState1, *--ip);
-        FSE_FLUSHBITS(&bitC);
-    } else {
-        FSE_initCState2(&CState2, ct, *--ip);
-        FSE_initCState2(&CState1, ct, *--ip);
-    }
-
-    /* join to mod 4 */
-    srcSize -= 2;
-    if ((sizeof(bitC.bitContainer)*8 > FSE_MAX_TABLELOG*4+7 ) && (srcSize & 2)) {  /* test bit 2 */
-        FSE_encodeSymbol(&bitC, &CState2, *--ip);
-        FSE_encodeSymbol(&bitC, &CState1, *--ip);
-        FSE_FLUSHBITS(&bitC);
-    }
+	FSE_initCState2(&CState4, ct, *--ip);
+	FSE_initCState2(&CState3, ct, *--ip);
+	FSE_initCState2(&CState2, ct, *--ip);
+	FSE_initCState2(&CState1, ct, *--ip);
 
     /* 2 or 4 encoding per loop */
     while ( ip>istart ) {
 
-        FSE_encodeSymbol(&bitC, &CState2, *--ip);
-
-        if (sizeof(bitC.bitContainer)*8 < FSE_MAX_TABLELOG*2+7 )   /* this test must be static */
-            FSE_FLUSHBITS(&bitC);
-
-        FSE_encodeSymbol(&bitC, &CState1, *--ip);
-
-        if (sizeof(bitC.bitContainer)*8 > FSE_MAX_TABLELOG*4+7 ) {  /* this test must be static */
-            FSE_encodeSymbol(&bitC, &CState2, *--ip);
-            FSE_encodeSymbol(&bitC, &CState1, *--ip);
-        }
+        FSE_encodeSymbol(&bitC, &CState4, *--ip);
+        FSE_encodeSymbol(&bitC, &CState3, *--ip);
+		FSE_encodeSymbol(&bitC, &CState2, *--ip);
+		FSE_encodeSymbol(&bitC, &CState1, *--ip);
 
         FSE_FLUSHBITS(&bitC);
     }
 
+    FSE_flushCState(&bitC, &CState4);
+    FSE_flushCState(&bitC, &CState3);
     FSE_flushCState(&bitC, &CState2);
     FSE_flushCState(&bitC, &CState1);
     return BIT_closeCStream(&bitC);

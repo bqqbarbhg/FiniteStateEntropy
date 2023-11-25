@@ -32,6 +32,12 @@ extern "C" {
 #include "debug.h"          /* assert(), DEBUGLOG(), RAWLOG() */
 #include "error_private.h"  /* error codes and messages */
 
+#if defined(_MSC_VER)
+	#include <intrin.h>
+#else
+    #include <x86intrin.h>
+    #define _shrx_u64(a, b) ((a) >> (b))
+#endif
 
 /*=========================================
 *  Target specific
@@ -365,6 +371,12 @@ MEM_STATIC size_t BIT_lookBitsFast(const BIT_DStream_t* bitD, U32 nbBits)
     return (bitD->bitContainer << (bitD->bitsConsumed & regMask)) >> (((regMask+1)-nbBits) & regMask);
 }
 
+
+MEM_STATIC size_t BIT_lookBitsNoMask(const BIT_DStream_t* bitD, U32 nbBits)
+{
+    return _bzhi_u64(_shrx_u64(bitD->bitContainer, ((sizeof(bitD->bitContainer)*8) - bitD->bitsConsumed - nbBits)), nbBits);
+}
+
 MEM_STATIC void BIT_skipBits(BIT_DStream_t* bitD, U32 nbBits)
 {
     bitD->bitsConsumed += nbBits;
@@ -377,6 +389,13 @@ MEM_STATIC void BIT_skipBits(BIT_DStream_t* bitD, U32 nbBits)
 MEM_STATIC size_t BIT_readBits(BIT_DStream_t* bitD, unsigned nbBits)
 {
     size_t const value = BIT_lookBits(bitD, nbBits);
+    BIT_skipBits(bitD, nbBits);
+    return value;
+}
+
+MEM_STATIC size_t BIT_readBitsNoMask(BIT_DStream_t* bitD, unsigned nbBits)
+{
+    size_t const value = BIT_lookBitsNoMask(bitD, nbBits);
     BIT_skipBits(bitD, nbBits);
     return value;
 }

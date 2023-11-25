@@ -24,6 +24,7 @@ extern "C" {
 *  Dependencies
 ******************************************/
 #include <stddef.h>    /* size_t, ptrdiff_t */
+#include <stdint.h>
 
 
 /*-*****************************************
@@ -409,8 +410,7 @@ If there is an error, it returns an errorCode (which can be tested using FSE_isE
 *  FSE symbol decompression API
 *******************************************/
 typedef struct {
-    size_t      state;
-    const void* table;   /* precise table may vary, depending on U16 */
+    const void* table_state;
 } FSE_DState_t;
 
 
@@ -567,63 +567,51 @@ typedef struct {
     U16 fastMode;
 } FSE_DTableHeader;   /* sizeof U32 */
 
+#if 0
 typedef struct
 {
     unsigned short newState;
     unsigned char  symbol;
     unsigned char  nbBits;
 } FSE_decode_t;   /* size == U32 */
+#endif
+
+typedef int32_t FSE_decode_t;
+
+#define FSE_decode_t_pack(delta, symbol, nbBits) ((int32_t)(((int32_t)(delta) << 16) | ((int32_t)(symbol) << 8) | (int32_t)(nbBits)))
+
+#define FSE_decode_t_delta_bytes(d) ((d)>>14)
+#define FSE_decode_t_delta(d) ((d)>>16)
+#define FSE_decode_t_symbol(d) (((d)>>8)&0xff)
+#define FSE_decode_t_nbBits(d) ((d)&0xff)
 
 MEM_STATIC void FSE_initDState(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD, const FSE_DTable* dt)
 {
     const void* ptr = dt;
     const FSE_DTableHeader* const DTableH = (const FSE_DTableHeader*)ptr;
-    DStatePtr->state = BIT_readBits(bitD, DTableH->tableLog);
+    DStatePtr->table_state = dt + 1 + BIT_readBits(bitD, DTableH->tableLog);
     BIT_reloadDStream(bitD);
-    DStatePtr->table = dt + 1;
 }
 
 MEM_STATIC BYTE FSE_peekSymbol(const FSE_DState_t* DStatePtr)
 {
-    FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
-    return DInfo.symbol;
-}
-
-MEM_STATIC void FSE_updateState(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
-{
-    FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
-    U32 const nbBits = DInfo.nbBits;
-    size_t const lowBits = BIT_readBits(bitD, nbBits);
-    DStatePtr->state = DInfo.newState + lowBits;
+    FSE_decode_t const DInfo = *(const FSE_decode_t*)(DStatePtr->table_state);
+    return FSE_decode_t_symbol(DInfo);
 }
 
 MEM_STATIC BYTE FSE_decodeSymbol(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
 {
-    FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
-    U32 const nbBits = DInfo.nbBits;
-    BYTE const symbol = DInfo.symbol;
-    size_t const lowBits = BIT_readBits(bitD, nbBits);
+    FSE_decode_t const DInfo = *(const FSE_decode_t*)(DStatePtr->table_state);
+    U32 const nbBits = FSE_decode_t_nbBits(DInfo);
+    BYTE const symbol = FSE_decode_t_symbol(DInfo);
+    size_t const lowBits = BIT_readBitsNoMask(bitD, nbBits);
 
-    DStatePtr->state = DInfo.newState + lowBits;
-    return symbol;
-}
-
-/*! FSE_decodeSymbolFast() :
-    unsafe, only works if no symbol has a probability > 50% */
-MEM_STATIC BYTE FSE_decodeSymbolFast(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
-{
-    FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
-    U32 const nbBits = DInfo.nbBits;
-    BYTE const symbol = DInfo.symbol;
-    size_t const lowBits = BIT_readBitsFast(bitD, nbBits);
-
-    DStatePtr->state = DInfo.newState + lowBits;
+    DStatePtr->table_state = (char*)(((uintptr_t)DStatePtr->table_state + FSE_decode_t_delta_bytes(DInfo)) + lowBits*4);
     return symbol;
 }
 
 MEM_STATIC unsigned FSE_endOfDState(const FSE_DState_t* DStatePtr)
 {
-    return DStatePtr->state == 0;
 }
 
 

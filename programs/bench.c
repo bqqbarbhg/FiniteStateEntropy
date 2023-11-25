@@ -110,7 +110,7 @@
 static U32 chunkSize = DEFAULT_CHUNKSIZE;
 static int nbIterations = NBLOOPS;
 static int BMK_byteCompressor = 1;
-static int BMK_tableLog = 12;
+static int BMK_tableLog = 10;
 
 void BMK_SetByteCompressor(int id) { BMK_byteCompressor = id; }
 
@@ -187,10 +187,9 @@ static U64 BMK_GetFileSize(const char* infilename)
 *  Public function
 *********************************************************/
 
-void BMK_benchMem285(chunkParameters_t* chunkP, int nbChunks, const char* inFileName, int benchedSize,
-                  U64* totalCompressedSize, double* totalCompressionTime, double* totalDecompressionTime,
-                  int memLog)
+void BMK_benchMem285()
 {
+#if 0
     int loopNb, chunkNb;
     size_t cSize=0;
     double fastestC = 100000000., fastestD = 100000000.;
@@ -286,6 +285,7 @@ void BMK_benchMem285(chunkParameters_t* chunkP, int nbChunks, const char* inFile
     *totalCompressedSize    += cSize;
     *totalCompressionTime   += fastestC;
     *totalDecompressionTime += fastestD;
+#endif
 }
 
 
@@ -539,7 +539,7 @@ int BMK_benchFiles(const char** fileNamesTable, int nbFiles)
                     chunkP[i].origSize = chunkSize;
                     remaining -= chunkSize;
                 } else {
-                    chunkP[i].origSize = (int)remaining;
+                    chunkP[i].origSize = (int)remaining & ~0x3;
                     remaining = 0;
                 }
                 chunkP[i].compressedBuffer = out; out += maxCompressedChunkSize;
