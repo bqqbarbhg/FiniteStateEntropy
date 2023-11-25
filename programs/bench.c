@@ -507,6 +507,8 @@ int BMK_benchFiles(const char** fileNamesTable, int nbFiles)
             DISPLAY("Not enough memory for '%s' full size; testing %i MB only...\n",
                     inFileName, (int)(benchedSize>>20));
 
+        benchedSize &= ~(size_t)0x3;
+
         /* Allocation */
         chunkP = (chunkParameters_t*) malloc(((benchedSize / chunkSize)+1) * sizeof(chunkParameters_t));
         orig_buff = (char*)malloc((size_t )benchedSize);
@@ -539,7 +541,7 @@ int BMK_benchFiles(const char** fileNamesTable, int nbFiles)
                     chunkP[i].origSize = chunkSize;
                     remaining -= chunkSize;
                 } else {
-                    chunkP[i].origSize = (int)remaining & ~0x3;
+                    chunkP[i].origSize = (int)remaining;
                     remaining = 0;
                 }
                 chunkP[i].compressedBuffer = out; out += maxCompressedChunkSize;
